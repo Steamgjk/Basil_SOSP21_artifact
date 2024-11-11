@@ -24,6 +24,7 @@ double *zipf;
 vector<string> keys;
 int nKeys = 100;
 
+
 int
 main(int argc, char **argv)
 {
