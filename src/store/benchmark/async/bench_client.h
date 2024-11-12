@@ -38,11 +38,12 @@
 
 typedef std::function<void()> bench_done_callback;
 
-class BenchmarkClient {
- public:
+class BenchmarkClient
+{
+public:
   BenchmarkClient(Transport &transport, uint64_t id, int numRequests,
-      int expDuration, uint64_t delay, int warmupSec, int cooldownSec,
-      int tputInterval, const std::string &latencyFilename = "");
+                  int expDuration, uint64_t delay, int warmupSec, int cooldownSec,
+                  int tputInterval, const std::string &latencyFilename = "");
   virtual ~BenchmarkClient();
 
   void Start(bench_done_callback bdcb);
@@ -58,17 +59,20 @@ class BenchmarkClient {
   bool done;
   bool cooldownStarted;
   int tputInterval;
-  std::vector<uint64_t> latencies;
+  std::vector<uint64_t> latencies;   // nano-second
+  std::vector<uint64_t> commitTimes; // micro-second
 
   inline const Stats &GetStats() const { return stats; }
- protected:
+
+protected:
   virtual std::string GetLastOp() const = 0;
 
   inline std::mt19937 &GetRand() { return rand; }
-  
+
   Stats stats;
   Transport &transport;
- private:
+
+private:
   void Finish();
   void WarmupDone();
   void CooldownDone();

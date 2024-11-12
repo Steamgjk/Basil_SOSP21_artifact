@@ -10,10 +10,10 @@
  * modify, merge, publish, distribute, sublicense, and/or sell copies
  * of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -33,60 +33,64 @@
 #include <random>
 #include <vector>
 
-enum partitioner_t {
+enum partitioner_t
+{
   DEFAULT = 0,
   WAREHOUSE_DIST_ITEMS,
   WAREHOUSE,
 };
 
-class Partitioner {
- public:
+class Partitioner
+{
+public:
   Partitioner() {}
   virtual ~Partitioner() {}
   virtual uint64_t operator()(const std::string &key, uint64_t numShards,
-      int group, const std::vector<int> &txnGroups) = 0;
+                              int group, const std::vector<int> &txnGroups) = 0;
 };
 
-class DefaultPartitioner : public Partitioner {
- public:
+class DefaultPartitioner : public Partitioner
+{
+public:
   DefaultPartitioner() {}
   virtual ~DefaultPartitioner() {}
 
   virtual uint64_t operator()(const std::string &key, uint64_t numShards,
-      int group, const std::vector<int> &txnGroups);
- private:
+                              int group, const std::vector<int> &txnGroups);
+
+private:
   std::hash<std::string> hash;
 };
 
-class WarehouseDistItemsPartitioner : public Partitioner {
- public:
+class WarehouseDistItemsPartitioner : public Partitioner
+{
+public:
   WarehouseDistItemsPartitioner(uint64_t numWarehouses) : numWarehouses(numWarehouses) {}
   virtual ~WarehouseDistItemsPartitioner() {}
   virtual uint64_t operator()(const std::string &key, uint64_t numShards,
-      int group, const std::vector<int> &txnGroups);
+                              int group, const std::vector<int> &txnGroups);
 
- private:
+private:
   const uint64_t numWarehouses;
 };
 
-class WarehousePartitioner : public Partitioner {
- public:
-  WarehousePartitioner(uint64_t numWarehouses, std::mt19937 &rd) :
-      numWarehouses(numWarehouses), rd(rd) {}
+class WarehousePartitioner : public Partitioner
+{
+public:
+  WarehousePartitioner(uint64_t numWarehouses, std::mt19937 &rd) : numWarehouses(numWarehouses), rd(rd) {}
   virtual ~WarehousePartitioner() {}
 
   virtual uint64_t operator()(const std::string &key, uint64_t numShards,
-      int group, const std::vector<int> &txnGroups);
+                              int group, const std::vector<int> &txnGroups);
 
- private:
+private:
   const uint64_t numWarehouses;
   std::mt19937 &rd;
 };
 
-
-
 typedef std::function<uint64_t(const std::string &, uint64_t, int,
-    const std::vector<int> &)> partitioner;
+                               const std::vector<int> &)>
+    partitioner;
 
 extern partitioner default_partitioner;
 extern partitioner warehouse_partitioner;

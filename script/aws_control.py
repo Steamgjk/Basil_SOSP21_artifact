@@ -1,23 +1,34 @@
 import boto3
 
 
-def start_instances(instances):
+def start_instances(instances, region= None):
     """
     Start EC2 instances based on a list of instance IDs and regions.
 
     Parameters:
     instances (list): A list of dictionaries with 'instance_id' and 'region' keys.
     """
-    for instance in instances:
-        instance_id = instance['instance_id']
-        region = instance['region']
+    if region is None:
+      for instance in instances:
+          instance_id = instance['InstanceId']
+          region = instance['Region']
 
-        # Initialize the EC2 client for the specific region
+          # Initialize the EC2 client for the specific region
+          ec2_client = boto3.client('ec2', region_name=region)
+
+          # Start the instance
+          ec2_client.start_instances(InstanceIds=[instance_id])
+          waiter = ec2_client.get_waiter('instance_running')
+          waiter.wait(InstanceIds=[instance_id])
+          print(f"Started instance {instance_id} in region {region}")
+    else:
+        instance_ids = [instance_detail["InstanceId"] for instance_detail in instances]
         ec2_client = boto3.client('ec2', region_name=region)
-
         # Start the instance
-        ec2_client.start_instances(InstanceIds=[instance_id])
-        print(f"Started instance {instance_id} in region {region}")
+        ec2_client.start_instances(InstanceIds=instance_ids)
+        waiter = ec2_client.get_waiter('instance_running')
+        waiter.wait(InstanceIds=instance_ids)
+        print(f"Started instances")
 
 def stop_instances(instances):
     """
@@ -27,14 +38,16 @@ def stop_instances(instances):
     instances (list): A list of dictionaries with 'instance_id' and 'region' keys.
     """
     for instance in instances:
-        instance_id = instance['instance_id']
-        region = instance['region']
+        instance_id = instance['InstanceId']
+        region = instance['Region']
 
         # Initialize the EC2 client for the specific region
         ec2_client = boto3.client('ec2', region_name=region)
 
         # Stop the instance
         ec2_client.stop_instances(InstanceIds=[instance_id])
+        waiter = ec2_client.get_waiter('instance_stopped')
+        waiter.wait(InstanceIds=[instance_id])
         print(f"Stopped instance {instance_id} in region {region}")
 
 
@@ -82,74 +95,102 @@ def list_instances(regions = None):
         print(instance_info)
     return instances_data
 
-def list_amis():
-    # Initialize EC2 client to list all available regions
-    ec2_client = boto3.client('ec2')
-
-    # Get list of all regions
-    regions = [region['RegionName'] for region in ec2_client.describe_regions()['Regions']]
+def list_amis(region):
+    # Initialize EC2 client
+    ec2 = boto3.client('ec2', region_name = region)
 
     # Initialize an empty list to store AMI information
     ami_data = []
 
-    # Iterate through each region and collect AMI details
-    for region in regions:
-        # Create an EC2 client for each region
-        ec2 = boto3.client('ec2', region_name=region)
+    # Retrieve AMIs in the region (you can specify filters if needed, or retrieve all)
+    amis = ec2.describe_images(Owners=['self'])['Images']  # Only AMIs owned by the user
 
-        # Retrieve AMIs in the region (you can specify filters if needed, or retrieve all)
-        amis = ec2.describe_images(Owners=['self'])['Images']  # Only AMIs owned by the user
+    # Iterate over each AMI and collect the relevant details
+    for ami in amis:
+        ami_name = ami.get('Name', 'No Name')
+        ami_id = ami['ImageId']
 
-        # Iterate over each AMI and collect the relevant details
-        for ami in amis:
-            ami_name = ami.get('Name', 'No Name')
-            ami_id = ami['ImageId']
+        # Append AMI details as a dictionary to the list
+        ami_data.append({
+            "Region": region,
+            "AMIName": ami_name,
+            "AMIID": ami_id
+        })
 
-            # Append AMI details as a dictionary to the list
-            ami_data.append({
-                "Region": region,
-                "AMIName": ami_name,
-                "AMIID": ami_id
-            })
+    # # Display the collected AMI data
+    # for ami_info in ami_data:
+    #     print(ami_info)
 
-    # Display the collected AMI data
-    for ami_info in ami_data:
-        print(ami_info)
+    return ami_data
 
 
-
-def list_security_groups():
-    # Initialize EC2 client to list all available regions
-    ec2_client = boto3.client('ec2')
-
-    # Get a list of all regions
-    regions = [region['RegionName'] for region in ec2_client.describe_regions()['Regions']]
+def list_security_groups(region):
+    # Initialize EC2 client
+    ec2 = boto3.client('ec2', region_name = region)
 
     # Initialize an empty list to store security group details
     security_groups_list = []
 
-    # Iterate over each region and collect security group details
-    for region in regions:
-        # Create EC2 client for the current region
-        ec2 = boto3.client('ec2', region_name=region)
+    # Retrieve security groups in the region
+    response = ec2.describe_security_groups()
 
-        # Retrieve security groups in the region
-        response = ec2.describe_security_groups()
+    # Iterate over each security group and collect details
+    for sg in response['SecurityGroups']:
+        sg_name = sg['GroupName']
+        sg_id = sg['GroupId']
 
-        # Iterate over each security group and collect details
-        for sg in response['SecurityGroups']:
-            sg_name = sg['GroupName']
-            sg_id = sg['GroupId']
-
-            # Append security group details as a dictionary to the list
-            security_groups_list.append({
-                "Region": region,
-                "SecurityGroupName": sg_name,
-                "SecurityGroupID": sg_id
-            })
+        # Append security group details as a dictionary to the list
+        security_groups_list.append({
+            "Region": region,
+            "SecurityGroupName": sg_name,
+            "SecurityGroupID": sg_id
+        })
 
     return security_groups_list
 
+
+
+
+def list_subnets(region):
+    """
+    List all subnets in a specified AWS region with details on VPC and subnet names and IDs.
+
+    Parameters:
+    region (str): The AWS region to query for subnets.
+
+    Returns:
+    list: A list of dictionaries, each containing VPC name, VPC ID, subnet name, and subnet ID.
+    """
+    ec2_client = boto3.client('ec2', region_name=region)
+    subnet_details = []
+
+    # Fetch all VPCs in the region
+    vpcs = ec2_client.describe_vpcs()['Vpcs']
+    # Map VPC IDs to VPC names (if they have a Name tag)
+    vpc_name_map = {vpc['VpcId']: next((tag['Value'] for tag in vpc.get('Tags', []) if tag['Key'] == 'Name'), None)
+                    for vpc in vpcs}
+
+    # Fetch all subnets in the region
+    subnets = ec2_client.describe_subnets()['Subnets']
+
+    for subnet in subnets:
+        # Extract VPC ID and subnet ID
+        vpc_id = subnet['VpcId']
+        subnet_id = subnet['SubnetId']
+
+        # Retrieve VPC and subnet names from tags (if available)
+        vpc_name = vpc_name_map.get(vpc_id)
+        subnet_name = next((tag['Value'] for tag in subnet.get('Tags', []) if tag['Key'] == 'Name'), None)
+
+        # Append the subnet information to the list
+        subnet_details.append({
+            "VPCName": vpc_name,
+            "VPCID": vpc_id,
+            "SubnetName": subnet_name,
+            "SubnetID": subnet_id
+        })
+
+    return subnet_details
 
 
 def create_instance(instance_details, ami_id, security_group_id, instance_type="t2.micro"):
@@ -210,13 +251,15 @@ def create_instance(instance_details, ami_id, security_group_id, instance_type="
         "SecurityGroupID": security_group_id  # Include the Security Group ID in the returned dictionary
     }
 
+    waiter = ec2_client.get_waiter('instance_running')
+    waiter.wait(InstanceIds=[instance_id])
     print(f"Instance {instance_name} created with Instance ID: {instance_id} and Security Group ID: {security_group_id}")
 
     return instance_info
 
 
 
-def delete_instance(instance_id, region):
+def delete_instance(instance_ids, region):
     """
     Terminate an EC2 instance based on the provided instance ID and region.
 
@@ -231,15 +274,79 @@ def delete_instance(instance_id, region):
     ec2_client = boto3.client('ec2', region_name=region)
 
     # Terminate the instance
-    response = ec2_client.terminate_instances(InstanceIds=[instance_id])
+    response = ec2_client.terminate_instances(InstanceIds=instance_ids)
 
     # Retrieve the termination status from the response
     termination_status = response['TerminatingInstances'][0]['CurrentState']['Name']
 
-    print(f"Instance {instance_id} is now {termination_status}.")
+    print(f"termination status: {termination_status}.")
 
     return termination_status
 
+
+
+
+def modify_instance_type(instances, instance_type):
+    """
+    Modifies the instance type for a list of EC2 instances.
+
+    Parameters:
+    instances (list): A list of dictionaries, each with 'InstanceId' and 'Region' keys.
+    instance_type (str): The new instance type to apply (e.g., 't3.micro').
+
+    Returns:
+    list: A list of dictionaries with 'InstanceId', 'Region', and the result of the operation.
+    """
+    results = []
+
+    for instance in instances:
+        instance_id = instance['InstanceId']
+        region = instance['Region']
+
+        ec2_client = boto3.client('ec2', region_name=region)
+
+        try:
+            # Stop the instance
+            ec2_client.stop_instances(InstanceIds=[instance_id])
+            print(f"Stopping instance {instance_id} in region {region}...")
+
+            # Wait for the instance to stop
+            waiter = ec2_client.get_waiter('instance_stopped')
+            waiter.wait(InstanceIds=[instance_id])
+            print(f"Instance {instance_id} is now stopped.")
+
+            # Modify the instance type
+            ec2_client.modify_instance_attribute(
+                InstanceId=instance_id,
+                InstanceType={'Value': instance_type}
+            )
+            print(f"Modified instance {instance_id} to type {instance_type}.")
+
+            # # Start the instance again
+            # ec2_client.start_instances(InstanceIds=[instance_id])
+            # print(f"Starting instance {instance_id} in region {region}...")
+
+            # # Wait for the instance to start
+            # waiter = ec2_client.get_waiter('instance_running')
+            # waiter.wait(InstanceIds=[instance_id])
+            # print(f"Instance {instance_id} is now running with type {instance_type}.")
+
+            # Add result to list
+            results.append({
+                'InstanceId': instance_id,
+                'Region': region,
+                'Status': 'Success'
+            })
+
+        except ClientError as e:
+            print(f"Error modifying instance {instance_id} in region {region}: {e}")
+            results.append({
+                'InstanceId': instance_id,
+                'Region': region,
+                'Status': f"Failed - {e}"
+            })
+
+    return results
 
 
 def copy_ami_to_multiple_regions(ami_id, regions):
